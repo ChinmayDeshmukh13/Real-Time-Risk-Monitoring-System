@@ -1,0 +1,43 @@
+name: Risk Monitor Pipeline
+
+"on":
+  schedule:
+    - cron: '0,15,30,45 3-10 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  run-risk-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy scipy yfinance \
+                      clickhouse-driver quantlib-python \
+                      python-dotenv
+
+      - name: Run risk pipeline
+        env:
+          CLICKHOUSE_HOST:     ${{ secrets.CLICKHOUSE_HOST }}
+          CLICKHOUSE_PORT:     ${{ secrets.CLICKHOUSE_PORT }}
+          CLICKHOUSE_USER:     ${{ secrets.CLICKHOUSE_USER }}
+          CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
+          CLICKHOUSE_SECURE:   ${{ secrets.CLICKHOUSE_SECURE }}
+        run: python main.py
+
+      - name: Upload run logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: risk-run-${{ github.run_number }}
+          path: logs/
+          retention-days: 30
