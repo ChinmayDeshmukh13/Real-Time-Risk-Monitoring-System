@@ -1,9 +1,9 @@
 # Real-Time Market Risk Monitor
 ## Methodology & Technical Documentation
 
-**Author:** [Your Name]  
+**Author:** [Chinmay Deshmukh]  
 **Date:** May 2026  
-**Version:** 1.0  
+**Version:** 1.2.22  
 **Stack:** Python 3.11 · QuantLib · ClickHouse · Grafana · AWS Lambda
 
 ---
