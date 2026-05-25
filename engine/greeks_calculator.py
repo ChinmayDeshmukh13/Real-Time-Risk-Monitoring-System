@@ -1,7 +1,7 @@
 # engine/greeks_calculator.py
 # Calculates option Greeks using QuantLib's Black-Scholes engine
 
-import QuantLib as ql
+import QuantLib as ql # type: ignore
 from datetime import date, datetime
 from engine.config import get_client
 

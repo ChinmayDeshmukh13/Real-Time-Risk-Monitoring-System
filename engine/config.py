@@ -27,7 +27,7 @@ def get_client():
     Returns a ClickHouse client using environment configuration.
     Works for both local Docker and ClickHouse Cloud.
     """
-    from clickhouse_driver import Client
+    from clickhouse_driver import Client # type: ignore
 
     return Client(
         host     = Config.CLICKHOUSE_HOST,

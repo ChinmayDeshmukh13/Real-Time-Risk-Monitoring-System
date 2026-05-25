@@ -1,7 +1,7 @@
 # data/fetcher.py
 # Downloads historical stock data from Yahoo Finance
 
-import yfinance as yf
+import yfinance as yf # type: ignore
 import pandas as pd
 from datetime import datetime, timedelta
 
@@ -9,15 +9,38 @@ from datetime import datetime, timedelta
 # These are the 5 stocks in our portfolio
 # .NS suffix tells yfinance these are NSE-listed Indian stocks
 STOCKS = [
-    "RELIANCE.NS",   # Reliance Industries
-    "INFY.NS",       # Infosys
-    "HDFCBANK.NS",   # HDFC Bank
-    "TCS.NS",        # Tata Consultancy Services
-    "ICICIBANK.NS"   # ICICI Bank
+    # Large Cap — Banking & Finance
+    "HDFCBANK.NS",
+    "ICICIBANK.NS",
+    "KOTAKBANK.NS",
+    "AXISBANK.NS",
+    "SBIN.NS",
+    "BAJFINANCE.NS",
+
+    # Large Cap — IT
+    "TCS.NS",
+    "INFY.NS",
+    "WIPRO.NS",
+    "HCLTECH.NS",
+
+    # Large Cap — Energy & Industrial
+    "RELIANCE.NS",
+    "ONGC.NS",
+    "POWERGRID.NS",
+    "NTPC.NS",
+    "LT.NS",
+
+    # Large Cap — Consumer & Pharma
+    "HINDUNILVR.NS",
+    "NESTLEIND.NS",
+    "ASIANPAINT.NS",
+    "SUNPHARMA.NS",
+    "TITAN.NS",
 ]
 
-# How many days of history to download
-HISTORY_DAYS = 730  # 2 years
+HISTORY_DAYS = 750  # 3 years instead of 2
+
+
 
 
 # ── Main Function ───────────────────────────────────────────

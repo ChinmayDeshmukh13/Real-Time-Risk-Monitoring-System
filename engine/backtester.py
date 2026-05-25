@@ -4,7 +4,7 @@
 import numpy as np
 import pandas as pd
 from scipy import stats
-from clickhouse_driver import Client
+from clickhouse_driver import Client # type: ignore
 from datetime import datetime
 
 
