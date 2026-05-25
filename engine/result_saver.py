@@ -133,3 +133,31 @@ def save_run_results(var_report: dict,
         )
 
     print(f"  ✅ Results saved to ClickHouse at {run_time:%H:%M:%S}")
+
+def save_greeks(greeks_results: list):
+    """Saves option Greeks to greeks_log table."""
+    from datetime import datetime
+    client = get_client()
+
+    rows = []
+    now  = datetime.now()
+
+    for r in greeks_results:
+        rows.append((
+            now,
+            r['symbol'],
+            r['option_type'],
+            r['strike'],
+            r['expiry_days'],
+            r['spot'],
+            r['price'],
+            r['delta'],
+            r['gamma'],
+            r['theta'],
+            r['vega'],
+            r['moneyness']
+        ))
+
+    if rows:
+        client.execute('INSERT INTO greeks_log VALUES', rows)
+        print(f"  ✅ Greeks saved — {len(rows)} options logged")
