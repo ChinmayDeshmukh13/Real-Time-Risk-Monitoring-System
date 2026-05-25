@@ -7,7 +7,7 @@ from engine.backtester        import VaRBacktester
 from engine.result_saver      import save_run_results
 from engine.nse_calendar      import get_all_expiries
 import sys
-
+from engine.result_saver import save_run_results, save_greeks
 
 for stream in (sys.stdout, sys.stderr):
     try:
@@ -157,3 +157,5 @@ if __name__ == "__main__":
     print("━"*45)
 
     save_run_results(var_report, greeks, portfolio.get_total_value())
+    save_greeks(greeks)
+    
