@@ -5,6 +5,30 @@ import QuantLib as ql # type: ignore
 from datetime import date, datetime
 from engine.config import get_client
 
+# engine/greeks_calculator.py — add this at the top
+
+def get_market_data_batch(symbols: list) -> dict:
+    """
+    Single query to get latest prices AND volatilities
+    for ALL symbols at once — replaces N queries with 1.
+    """
+    client = get_client()
+    symbols_str = ",".join([f"'{s}'" for s in symbols])
+
+    rows = client.execute(f'''
+        SELECT
+            symbol,
+            argMax(close, date)            as latest_price,
+            stddevPop(returns) * sqrt(252) as annual_vol
+        FROM market_ticks
+        WHERE symbol IN ({symbols_str})
+        GROUP BY symbol
+    ''')
+
+    return {
+        row[0]: {'price': float(row[1]), 'vol': float(row[2])}
+        for row in rows
+    }
 
 # ── Helper: Get current stock price from database ───────────
 def get_current_price(symbol: str) -> float:
@@ -194,42 +218,37 @@ def calculate_greeks(
 # PORTFOLIO GREEKS: Calculate Greeks for multiple options
 # ══════════════════════════════════════════════════════════════
 def portfolio_greeks(options_list: list) -> list:
-    """
-    Calculates Greeks for a list of options.
+    """Greeks for multiple options — ONE DB query total."""
 
-    options_list: list of dicts, each with:
-      symbol, option_type, strike, expiry_days, quantity
+    # Get all prices + vols in ONE query
+    symbols     = list(set(opt['symbol'] for opt in options_list))
+    market_data = get_market_data_batch(symbols)
 
-    Returns list of result dicts with Greeks + position sizing.
-    """
     results = []
-
     for opt in options_list:
+        data = market_data.get(opt['symbol'], {})
+
         result = calculate_greeks(
             symbol      = opt['symbol'],
             option_type = opt['option_type'],
             strike      = opt['strike'],
-            expiry_days = opt['expiry_days']
+            expiry_days = opt['expiry_days'],
+            spot_price  = data.get('price'),     # from batch
+            volatility  = data.get('vol')        # from batch
         )
 
         if 'error' in result:
-            print(f"  ❌ Error pricing {opt['symbol']}: {result['error']}")
             continue
 
-        # Add quantity and position value
-        qty = opt.get('quantity', 1)
+        qty                      = opt.get('quantity', 1)
         result['quantity']       = qty
         result['position_value'] = result['price'] * qty
-
-        # Scale Greeks by quantity (100 options = 100× the exposure)
         result['position_delta'] = result['delta'] * qty
         result['position_vega']  = result['vega']  * qty
         result['position_theta'] = result['theta'] * qty
-
         results.append(result)
 
     return results
-
 
 # ══════════════════════════════════════════════════════════════
 # REPORT: Print formatted Greeks table

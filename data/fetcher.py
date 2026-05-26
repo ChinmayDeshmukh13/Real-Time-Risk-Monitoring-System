@@ -1,148 +1,150 @@
 # data/fetcher.py
-# Downloads historical stock data from Yahoo Finance
-
-import yfinance as yf # type: ignore
+import yfinance as yf
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+from engine.config import get_client
 
-# ── Configuration ──────────────────────────────────────────
-# These are the 5 stocks in our portfolio
-# .NS suffix tells yfinance these are NSE-listed Indian stocks
 STOCKS = [
-    # Large Cap — Banking & Finance
-    "HDFCBANK.NS",
-    "ICICIBANK.NS",
-    "KOTAKBANK.NS",
-    "AXISBANK.NS",
-    "SBIN.NS",
-    "BAJFINANCE.NS",
-
-    # Large Cap — IT
-    "TCS.NS",
-    "INFY.NS",
-    "WIPRO.NS",
-    "HCLTECH.NS",
-
-    # Large Cap — Energy & Industrial
-    "RELIANCE.NS",
-    "ONGC.NS",
-    "POWERGRID.NS",
-    "NTPC.NS",
-    "LT.NS",
-
-    # Large Cap — Consumer & Pharma
-    "HINDUNILVR.NS",
-    "NESTLEIND.NS",
-    "ASIANPAINT.NS",
-    "SUNPHARMA.NS",
-    "TITAN.NS",
+    "HDFCBANK.NS", "ICICIBANK.NS", "KOTAKBANK.NS", "AXISBANK.NS",
+    "SBIN.NS", "BAJFINANCE.NS", "TCS.NS", "INFY.NS", "WIPRO.NS",
+    "HCLTECH.NS", "RELIANCE.NS", "ONGC.NS", "POWERGRID.NS",
+    "NTPC.NS", "LT.NS", "HINDUNILVR.NS", "NESTLEIND.NS",
+    "ASIANPAINT.NS", "SUNPHARMA.NS", "TITAN.NS",
 ]
 
-HISTORY_DAYS = 750  # 3 years instead of 2
+HISTORY_DAYS = 750
 
 
+def get_last_loaded_dates() -> dict:
+    """
+    Queries ClickHouse for the latest date we have per symbol.
+    Returns dict like {'RELIANCE': date(2026,5,20), ...}
+    """
+    client = get_client()
+    try:
+        rows = client.execute('''
+            SELECT symbol, max(date)
+            FROM market_ticks
+            GROUP BY symbol
+        ''')
+        return {row[0]: row[1] for row in rows}
+    except Exception:
+        return {}
 
 
-# ── Main Function ───────────────────────────────────────────
 def fetch_stock_data(symbols=STOCKS, days=HISTORY_DAYS):
     """
-    Downloads OHLCV data for a list of stock symbols.
-    Returns a single cleaned DataFrame with all stocks combined.
+    INCREMENTAL: Only fetches data newer than what's already in DB.
+    On first run fetches full history. Subsequent runs fetch 1-2 days max.
     """
-
-    # Calculate date range
+    last_dates = get_last_loaded_dates()
     end_date   = datetime.today()
-    start_date = end_date - timedelta(days=days)
+    all_data   = []
 
-    print(f"\nFetching data from {start_date.date()} to {end_date.date()}")
-    print(f"Stocks: {symbols}\n")
+    print(f"\nIncremental fetch — checking {len(symbols)} symbols")
 
-    # This list will collect data for each stock
-    all_data = []
-
-    # Loop through each stock one by one
     for symbol in symbols:
+        clean = symbol.replace('.NS', '')
 
-        print(f"  Downloading {symbol}...", end=" ")
+        # Determine start date for this symbol
+        if clean in last_dates:
+            # Already have data — fetch only from next day onwards
+            start_date = datetime.combine(
+                last_dates[clean], datetime.min.time()
+            ) + timedelta(days=1)
+
+            days_to_fetch = (end_date - start_date).days
+            if days_to_fetch <= 0:
+                print(f"  {clean:<12} → up to date ✓")
+                continue
+        else:
+            # First time — fetch full history
+            start_date = end_date - timedelta(days=days)
+
+        print(f"  {clean:<12} → fetching from {start_date.date()}...",
+              end=" ")
 
         try:
-            # Download data from Yahoo Finance
-            # auto_adjust=True adjusts for stock splits and dividends automatically
             ticker = yf.Ticker(symbol)
-            df = ticker.history(
-                start=start_date,
-                end=end_date,
-                auto_adjust=True
+            df     = ticker.history(
+                start       = start_date,
+                end         = end_date,
+                auto_adjust = True
             )
 
-            # If no data came back, skip this stock
             if df.empty:
-                print("No data returned. Skipping.")
+                print("no data")
                 continue
 
-            # ── Clean the DataFrame ─────────────────────────
-
-            # Reset index so 'Date' becomes a regular column
             df = df.reset_index()
-
-            # Keep only the columns we need
             df = df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
-
-            # Rename columns to lowercase (matches our database schema)
             df.columns = ['date', 'open', 'high', 'low', 'close', 'volume']
 
-            # Convert date to just the date part (remove time component)
-            df['date'] = pd.to_datetime(df['date']).dt.date
-
-            # Add the stock symbol as a column
-            # Remove .NS suffix so we store "RELIANCE" not "RELIANCE.NS"
-            df['symbol'] = symbol.replace('.NS', '')
-
-            # ── Calculate Daily Returns ─────────────────────
-            # Return = (today's close - yesterday's close) / yesterday's close
-            # .pct_change() does exactly this calculation
-            # The first row will be NaN (no previous day) — we drop those
+            df['date']    = pd.to_datetime(df['date']).dt.date
+            df['symbol']  = clean
             df['returns'] = df['close'].pct_change()
+            df            = df.dropna()
 
-            # Drop the first row (NaN return) and any other missing values
-            df = df.dropna()
-
-            # Round prices to 2 decimal places
             df['open']    = df['open'].round(2)
             df['high']    = df['high'].round(2)
             df['low']     = df['low'].round(2)
             df['close']   = df['close'].round(2)
-            df['returns'] = df['returns'].round(6)  # returns need more precision
+            df['returns'] = df['returns'].round(6)
+            df['volume']  = df['volume'].astype(int)
 
-            # Convert volume to integer (yfinance sometimes gives floats)
-            df['volume'] = df['volume'].astype(int)
+            df = df[['symbol','date','open','high',
+                     'low','close','volume','returns']]
 
             all_data.append(df)
-            print(f"✅  {len(df)} rows")
+            print(f"{len(df)} new rows ✅")
 
         except Exception as e:
-            print(f"❌  Error: {e}")
+            print(f"error: {e} ❌")
 
-    # Combine all stocks into one DataFrame
     if not all_data:
-        raise Exception("No data was downloaded. Check your internet connection.")
+        print("  All symbols up to date — nothing to insert")
+        return None
 
     combined = pd.concat(all_data, ignore_index=True)
-
-    # Reorder columns to match database schema exactly
-    combined = combined[['symbol', 'date', 'open', 'high', 'low',
-                          'close', 'volume', 'returns']]
-
-    print(f"\nTotal rows downloaded: {len(combined):,}")
+    print(f"\nNew rows to insert: {len(combined):,}")
     return combined
 
 
-# ── Test Block ──────────────────────────────────────────────
-# This only runs when you execute this file directly
-# It does NOT run when another file imports from this file
-if __name__ == "__main__":
-    data = fetch_stock_data()
-    print("\nSample data (first 3 rows):")
-    print(data.head(3).to_string())
-    print("\nData types:")
-    print(data.dtypes)
+def fetch_full_history(symbols=STOCKS, days=HISTORY_DAYS):
+    """Force full re-fetch regardless of what's in DB. One-time use."""
+    end_date   = datetime.today()
+    start_date = end_date - timedelta(days=days)
+    all_data   = []
+
+    for symbol in symbols:
+        clean = symbol.replace('.NS', '')
+        print(f"  Full fetch {clean}...", end=" ")
+        try:
+            ticker = yf.Ticker(symbol)
+            df     = ticker.history(start=start_date, end=end_date,
+                                    auto_adjust=True)
+            if df.empty:
+                print("empty")
+                continue
+
+            df = df.reset_index()
+            df = df[['Date','Open','High','Low','Close','Volume']]
+            df.columns = ['date','open','high','low','close','volume']
+            df['date']    = pd.to_datetime(df['date']).dt.date
+            df['symbol']  = clean
+            df['returns'] = df['close'].pct_change()
+            df = df.dropna()
+            df['open']    = df['open'].round(2)
+            df['high']    = df['high'].round(2)
+            df['low']     = df['low'].round(2)
+            df['close']   = df['close'].round(2)
+            df['returns'] = df['returns'].round(6)
+            df['volume']  = df['volume'].astype(int)
+            df = df[['symbol','date','open','high',
+                     'low','close','volume','returns']]
+            all_data.append(df)
+            print(f"{len(df)} rows ✅")
+        except Exception as e:
+            print(f"error: {e}")
+
+    return pd.concat(all_data, ignore_index=True) if all_data else None

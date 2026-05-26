@@ -1,125 +1,82 @@
 # data/loader.py
-# Handles all database operations — creating tables and inserting data
-
-
-from data.fetcher import fetch_stock_data
-import pandas as pd
 from engine.config import get_client
+from data.fetcher  import fetch_stock_data
+import pandas as pd
 
-# ── Database Connection ─────────────────────────────────────
 
-
-
-# ── Create Table ────────────────────────────────────────────
-def create_table():
-    """Reads schema.sql and creates the table in ClickHouse."""
+def create_tables_if_not_exist():
+    """
+    Creates tables ONLY if they don't exist.
+    Safe to call every run — won't drop existing data.
+    """
     client = get_client()
 
-    # Read the SQL file we wrote
-    with open('data/schema.sql', 'r') as f:
-        sql = f.read()
+    client.execute('''
+        CREATE TABLE IF NOT EXISTS market_ticks (
+            symbol  String, date    Date,
+            open    Float64, high   Float64,
+            low     Float64, close  Float64,
+            volume  UInt64,  returns Float64
+        ) ENGINE = MergeTree() ORDER BY (symbol, date)
+    ''')
 
-    # ClickHouse can't execute multiple statements at once
-    # So we split by semicolon and run each statement separately
-    statements = [s.strip() for s in sql.split(';') if s.strip()]
+    client.execute('''
+        CREATE TABLE IF NOT EXISTS var_results (
+            run_time        DateTime,
+            portfolio_value Float64, hist_var_inr  Float64,
+            hist_var_pct    Float64, param_var_inr Float64,
+            mc_var_inr      Float64, hist_cvar_inr Float64,
+            net_delta       Float64, net_theta     Float64,
+            net_vega        Float64
+        ) ENGINE = MergeTree() ORDER BY run_time
+    ''')
 
-    for statement in statements:
-        client.execute(statement)
+    client.execute('''
+        CREATE TABLE IF NOT EXISTS breach_log (
+            breach_time     DateTime, method          String,
+            var_amount      Float64,  limit_amount    Float64,
+            breach_pct      Float64,  portfolio_value Float64,
+            severity        String
+        ) ENGINE = MergeTree() ORDER BY breach_time
+    ''')
 
-    print("✅  Table created successfully")
+    client.execute('''
+        CREATE TABLE IF NOT EXISTS greeks_log (
+            run_time    DateTime, symbol      String,
+            option_type String,   strike      Float64,
+            expiry_days Int32,    spot        Float64,
+            price       Float64,  delta       Float64,
+            gamma       Float64,  theta       Float64,
+            vega        Float64,  moneyness   String
+        ) ENGINE = MergeTree() ORDER BY (run_time, symbol)
+    ''')
+
+    print("✅ Tables verified (created if missing)")
 
 
-# ── Insert Data ─────────────────────────────────────────────
 def insert_data(df: pd.DataFrame):
-    """
-    Inserts a DataFrame into the market_ticks table.
-    
-    df: the DataFrame from fetch_stock_data()
-    """
+    """Inserts only new rows — called after incremental fetch."""
+    if df is None or len(df) == 0:
+        print("  Nothing to insert")
+        return
+
     client = get_client()
-
-    # Convert DataFrame to list of tuples — ClickHouse format
-    # Each tuple is one row: (symbol, date, open, high, low, close, volume, returns)
-    rows = list(df.itertuples(index=False, name=None))
-
-    # Insert all rows in one batch (much faster than row by row)
-    client.execute(
-        'INSERT INTO market_ticks VALUES',
-        rows
-    )
-
-    print(f"✅  Inserted {len(rows):,} rows into ClickHouse")
+    rows   = list(df.itertuples(index=False, name=None))
+    client.execute('INSERT INTO market_ticks VALUES', rows)
+    print(f"✅ Inserted {len(rows):,} new rows")
 
 
-# ── Verify Data ─────────────────────────────────────────────
-def verify_data():
-    """Runs basic checks to confirm data loaded correctly."""
-    client = get_client()
-
-    print("\n── Verification ────────────────────────────")
-
-    # Total row count
-    result = client.execute('SELECT count() FROM market_ticks')
-    print(f"  Total rows:     {result[0][0]:,}")
-
-    # Rows per stock
-    result = client.execute('''
-        SELECT symbol, count() as rows, min(date) as start, max(date) as end
-        FROM market_ticks
-        GROUP BY symbol
-        ORDER BY symbol
-    ''')
-    print(f"\n  {'Symbol':<12} {'Rows':<8} {'Start':<12} {'End'}")
-    print(f"  {'-'*45}")
-    for row in result:
-        print(f"  {row[0]:<12} {row[1]:<8} {str(row[2]):<12} {str(row[3])}")
-
-    # Sample returns statistics
-    result = client.execute('''
-        SELECT
-            symbol,
-            round(avg(returns) * 100, 4)   as avg_return_pct,
-            round(stddevPop(returns) * 100, 4) as volatility_pct
-        FROM market_ticks
-        GROUP BY symbol
-        ORDER BY symbol
-    ''')
-    print(f"\n  {'Symbol':<12} {'Avg Return %':<15} {'Daily Volatility %'}")
-    print(f"  {'-'*45}")
-    for row in result:
-        print(f"  {row[0]:<12} {row[1]:<15} {row[2]}")
-
-    print(f"\n────────────────────────────────────────────")
-
-
-# ── Master Function ─────────────────────────────────────────
-def load_all_data():
-    """Runs the complete pipeline: create table → fetch → insert → verify."""
-
-    print("=" * 50)
-    print("  DATA LOADING PIPELINE")
-    print("=" * 50)
-
-    # Step 1: Create the table
-    print("\n[1] Creating database table...")
-    create_table()
-
-    # Step 2: Fetch data from internet
-    print("\n[2] Fetching market data...")
+def run_incremental_pipeline():
+    """
+    Production-safe pipeline:
+    1. Ensure tables exist (safe, fast)
+    2. Fetch only missing data (incremental)
+    3. Insert new rows only
+    """
+    create_tables_if_not_exist()
     df = fetch_stock_data()
-
-    # Step 3: Insert into database
-    print("\n[3] Inserting into ClickHouse...")
     insert_data(df)
 
-    # Step 4: Verify everything loaded
-    print("\n[4] Verifying data...")
-    verify_data()
 
-    print("\n✅  Data pipeline complete!")
-    print("=" * 50)
-
-
-# ── Run directly ────────────────────────────────────────────
 if __name__ == "__main__":
-    load_all_data()
+    run_incremental_pipeline()
