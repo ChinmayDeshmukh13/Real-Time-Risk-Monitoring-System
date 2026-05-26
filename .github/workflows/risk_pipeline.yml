@@ -20,10 +20,7 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          pip install pandas numpy scipy yfinance \
-                      clickhouse-driver quantlib-python \
-                      python-dotenv
+        run: pip install -r requirements.txt
 
       - name: Refresh NSE market data
         env:
