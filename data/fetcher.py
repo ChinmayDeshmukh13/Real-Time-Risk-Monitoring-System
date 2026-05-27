@@ -4,7 +4,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ... rest of imports
-import yfinance as yf
+import yfinance as yf # type: ignore
 import pandas as pd
 from datetime import datetime, timedelta, date
 from engine.config import get_client
