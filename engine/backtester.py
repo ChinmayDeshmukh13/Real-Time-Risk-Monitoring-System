@@ -1,6 +1,11 @@
 # engine/backtester.py
 # Validates the VaR model using Kupiec's Proportion of Failures test
+# engine/backtester.py
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from engine.config import get_client
+# ... rest of imports
 import numpy as np
 import pandas as pd
 from scipy import stats

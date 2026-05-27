@@ -1,4 +1,8 @@
 # data/loader.py
+# data/loader.py
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from engine.config import get_client
 from data.fetcher  import fetch_stock_data
 import pandas as pd
