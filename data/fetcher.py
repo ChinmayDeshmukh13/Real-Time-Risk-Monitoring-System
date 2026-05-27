@@ -1,4 +1,9 @@
 # data/fetcher.py
+# data/fetcher.py
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# ... rest of imports
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta, date
