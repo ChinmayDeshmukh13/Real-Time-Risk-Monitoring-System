@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
@@ -29,4 +31,3 @@ jobs:
           name: risk-run-${{ github.run_number }}
           path: logs/
           retention-days: 30
-     
