@@ -9,14 +9,7 @@ from engine.config import get_client
 import numpy as np
 import pandas as pd
 from scipy import stats
-from clickhouse_driver import Client # type: ignore
 from datetime import datetime
-
-
-# ── Database connection ─────────────────────────────────────
-def get_client():
-    return Client(host='localhost', port=9000,
-                  user='default', password='')
 
 
 # ══════════════════════════════════════════════════════════════

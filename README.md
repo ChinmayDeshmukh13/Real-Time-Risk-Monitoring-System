@@ -14,7 +14,7 @@
 - Kupiec POF backtesting (Basel III validation)
 - Sector allocation & risk contribution
 - Return distribution with fat tails
-- Automated breach detection & alert logging
+- Automated breach detection & alert logging (JSON + ClickHouse `breach_log`)
 
 ## Stack
 Python · QuantLib · ClickHouse Cloud · Grafana Cloud · GitHub Actions

@@ -1,37 +1,7 @@
 # engine/result_saver.py
 from datetime import datetime
 from engine.config import get_client
-
-
-def ensure_option_greeks_table(client):
-    """Creates the option-level dashboard table if it is missing."""
-    client.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS option_greeks_results (
-            run_time       DateTime,
-            symbol         String,
-            option_type    String,
-            spot           Float64,
-            strike         Float64,
-            expiry_days    UInt16,
-            volatility     Float64,
-            price          Float64,
-            delta          Float64,
-            gamma          Float64,
-            vega           Float64,
-            theta          Float64,
-            rho            Float64,
-            moneyness      String,
-            quantity       Float64,
-            position_value Float64,
-            position_delta Float64,
-            position_vega  Float64,
-            position_theta Float64
-        )
-        ENGINE = MergeTree()
-        ORDER BY (run_time, symbol, option_type, strike)
-        '''
-    )
+from engine.db_schema import ensure_tables
 
 
 def save_run_results(var_report: dict,
@@ -39,7 +9,7 @@ def save_run_results(var_report: dict,
                      portfolio_value: float):
     """Saves one complete risk run to var_results table."""
     client = get_client()
-    ensure_option_greeks_table(client)
+    ensure_tables(client)
     run_time = datetime.now()
 
     hist  = var_report['historical']
