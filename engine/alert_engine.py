@@ -326,7 +326,7 @@ class AlertEngine:
                 alert.limit_type,
                 float(alert.actual),
                 float(alert.limit),
-                float(alert.actual / alert.limit) if alert.limit != 0 else 0.0,
+                float(alert.actual / alert.limit) if alert.limit != 0 else float('nan'),
                 float(alert.portfolio_value),
                 alert.severity.value,
             )
