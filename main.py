@@ -49,6 +49,7 @@ if __name__ == "__main__":
     engine = AlertEngine(RiskLimits())
     engine.check_all(var_report, greeks, portfolio.get_total_value())
     engine.print_report()
+    engine.log_alerts()
 
     # Step 4: Backtest
     print("\n━━━ STEP 4: KUPIEC BACKTEST ━━━")

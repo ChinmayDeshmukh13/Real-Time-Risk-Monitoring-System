@@ -7,7 +7,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from engine.config import get_client
-from main import holdings
+from engine.db_schema import ensure_tables
+from config.portfolio import HOLDINGS
 
 
 SECTORS = {
@@ -36,24 +37,13 @@ SECTORS = {
 
 def main() -> None:
     client = get_client()
-
-    client.execute(
-        """
-        CREATE TABLE IF NOT EXISTS portfolio_positions (
-            symbol   String,
-            sector   String,
-            quantity Float64
-        )
-        ENGINE = MergeTree()
-        ORDER BY symbol
-        """
-    )
+    ensure_tables(client)
 
     client.execute("TRUNCATE TABLE portfolio_positions")
 
     rows = [
         (symbol, SECTORS.get(symbol, "Other"), float(quantity))
-        for symbol, quantity in holdings.items()
+        for symbol, quantity in HOLDINGS.items()
     ]
     client.execute("INSERT INTO portfolio_positions VALUES", rows)
 

@@ -5,6 +5,7 @@ import os
 import json
 from datetime import datetime
 from enum import Enum
+from engine.config import get_client
 
 
 # ── Alert Severity Levels ───────────────────────────────────
@@ -308,6 +309,49 @@ class AlertEngine:
                 # Write each alert as one JSON line
                 # json.dumps converts dict to JSON string
                 f.write(json.dumps(alert.to_dict()) + '\n')
+        self._save_breaches_to_clickhouse()
+
+    def _save_breaches_to_clickhouse(self):
+        """Persists BREACH/CRITICAL events to ClickHouse breach_log."""
+        breach_alerts = [
+            alert for alert in self.alerts
+            if alert.severity in (Severity.BREACH, Severity.CRITICAL)
+        ]
+        if not breach_alerts:
+            return
+
+        rows = [
+            (
+                alert.timestamp,
+                alert.limit_type,
+                float(alert.actual),
+                float(alert.limit),
+                float(alert.actual / alert.limit) if alert.limit != 0 else float('nan'),
+                float(alert.portfolio_value),
+                alert.severity.value,
+            )
+            for alert in breach_alerts
+        ]
+
+        try:
+            client = get_client()
+            client.execute(
+                '''
+                INSERT INTO breach_log (
+                    breach_time,
+                    method,
+                    var_amount,
+                    limit_amount,
+                    breach_pct,
+                    portfolio_value,
+                    severity
+                ) VALUES
+                ''',
+                rows
+            )
+            print(f"  ✅ Breaches saved — {len(rows)} events logged")
+        except Exception as exc:
+            print(f"  ⚠️  Could not save breaches to ClickHouse: {exc}")
 
 
     # ── Print Alert Report ──────────────────────────────────
