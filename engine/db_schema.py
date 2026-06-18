@@ -2,96 +2,98 @@ from engine.config import get_client
 
 
 def ensure_tables(client=None):
-    """
-    Creates all required ClickHouse tables if missing.
-    Safe to call on every run.
-    """
     client = client or get_client()
 
-    client.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS market_ticks (
-            symbol  String, date    Date,
-            open    Float64, high   Float64,
-            low     Float64, close  Float64,
-            volume  UInt64,  returns Float64
-        ) ENGINE = MergeTree() ORDER BY (symbol, date)
-    '''
-    )
+    cur = client.cursor()
 
-    client.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS var_results (
-            run_time        DateTime,
-            portfolio_value Float64, hist_var_inr  Float64,
-            hist_var_pct    Float64, param_var_inr Float64,
-            mc_var_inr      Float64, hist_cvar_inr Float64,
-            net_delta       Float64, net_theta     Float64,
-            net_vega        Float64
-        ) ENGINE = MergeTree() ORDER BY run_time
-    '''
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS market_ticks (
+        symbol VARCHAR(20),
+        date DATE,
+        open DOUBLE PRECISION,
+        high DOUBLE PRECISION,
+        low DOUBLE PRECISION,
+        close DOUBLE PRECISION,
+        volume BIGINT,
+        returns DOUBLE PRECISION
     )
+    """)
 
-    client.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS breach_log (
-            breach_time     DateTime, method          String,
-            var_amount      Float64,  limit_amount    Float64,
-            breach_pct      Float64,  portfolio_value Float64,
-            severity        String
-        ) ENGINE = MergeTree() ORDER BY breach_time
-    '''
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS var_results (
+        run_time TIMESTAMP,
+        portfolio_value DOUBLE PRECISION,
+        hist_var_inr DOUBLE PRECISION,
+        hist_var_pct DOUBLE PRECISION,
+        param_var_inr DOUBLE PRECISION,
+        mc_var_inr DOUBLE PRECISION,
+        hist_cvar_inr DOUBLE PRECISION,
+        net_delta DOUBLE PRECISION,
+        net_theta DOUBLE PRECISION,
+        net_vega DOUBLE PRECISION
     )
+    """)
 
-    client.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS greeks_log (
-            run_time    DateTime, symbol      String,
-            option_type String,   strike      Float64,
-            expiry_days Int32,    spot        Float64,
-            price       Float64,  delta       Float64,
-            gamma       Float64,  theta       Float64,
-            vega        Float64,  moneyness   String
-        ) ENGINE = MergeTree() ORDER BY (run_time, symbol)
-    '''
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS breach_log (
+        breach_time TIMESTAMP,
+        method VARCHAR(50),
+        var_amount DOUBLE PRECISION,
+        limit_amount DOUBLE PRECISION,
+        breach_pct DOUBLE PRECISION,
+        portfolio_value DOUBLE PRECISION,
+        severity VARCHAR(20)
     )
+    """)
 
-    client.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS option_greeks_results (
-            run_time       DateTime,
-            symbol         String,
-            option_type    String,
-            spot           Float64,
-            strike         Float64,
-            expiry_days    UInt16,
-            volatility     Float64,
-            price          Float64,
-            delta          Float64,
-            gamma          Float64,
-            vega           Float64,
-            theta          Float64,
-            rho            Float64,
-            moneyness      String,
-            quantity       Float64,
-            position_value Float64,
-            position_delta Float64,
-            position_vega  Float64,
-            position_theta Float64
-        )
-        ENGINE = MergeTree()
-        ORDER BY (run_time, symbol, option_type, strike)
-    '''
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS greeks_log (
+        run_time TIMESTAMP,
+        symbol VARCHAR(20),
+        option_type VARCHAR(10),
+        strike DOUBLE PRECISION,
+        expiry_days INTEGER,
+        spot DOUBLE PRECISION,
+        price DOUBLE PRECISION,
+        delta DOUBLE PRECISION,
+        gamma DOUBLE PRECISION,
+        theta DOUBLE PRECISION,
+        vega DOUBLE PRECISION,
+        moneyness VARCHAR(20)
     )
+    """)
 
-    client.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS portfolio_positions (
-            symbol   String,
-            sector   String,
-            quantity Float64
-        )
-        ENGINE = MergeTree()
-        ORDER BY symbol
-    '''
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS option_greeks_results (
+        run_time TIMESTAMP,
+        symbol VARCHAR(20),
+        option_type VARCHAR(10),
+        spot DOUBLE PRECISION,
+        strike DOUBLE PRECISION,
+        expiry_days INTEGER,
+        volatility DOUBLE PRECISION,
+        price DOUBLE PRECISION,
+        delta DOUBLE PRECISION,
+        gamma DOUBLE PRECISION,
+        vega DOUBLE PRECISION,
+        theta DOUBLE PRECISION,
+        rho DOUBLE PRECISION,
+        moneyness VARCHAR(20),
+        quantity DOUBLE PRECISION,
+        position_value DOUBLE PRECISION,
+        position_delta DOUBLE PRECISION,
+        position_vega DOUBLE PRECISION,
+        position_theta DOUBLE PRECISION
     )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS portfolio_positions (
+        symbol VARCHAR(20),
+        sector VARCHAR(50),
+        quantity DOUBLE PRECISION
+    )
+    """)
+
+    client.commit()
+    cur.close()

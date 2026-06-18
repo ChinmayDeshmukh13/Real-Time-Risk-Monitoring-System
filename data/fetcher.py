@@ -20,20 +20,35 @@ STOCKS = [
 HISTORY_DAYS = 750
 
 
+
 def get_last_loaded_dates() -> dict:
-    """
-    Queries ClickHouse for the latest date we have per symbol.
-    Returns dict like {'RELIANCE': date(2026,5,20), ...}
-    """
-    client = get_client()
+
+    conn = get_client()
+    cur = conn.cursor()
+
     try:
-        rows = client.execute('''
-            SELECT symbol, max(date)
+        cur.execute("""
+            SELECT symbol, MAX(date)
             FROM market_ticks
             GROUP BY symbol
-        ''')
+        """)
+
+        rows = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
         return {row[0]: row[1] for row in rows}
-    except Exception:
+
+    except Exception as e:
+        print("Database error:", e)
+
+        try:
+            cur.close()
+            conn.close()
+        except:
+            pass
+
         return {}
 
 

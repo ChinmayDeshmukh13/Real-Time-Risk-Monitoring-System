@@ -43,21 +43,25 @@ class Portfolio:
         Private method — loads price and returns data from ClickHouse.
         The underscore prefix means 'internal use only'.
         """
-        client = get_client()
+        
+        conn = get_client()
+        cur = conn.cursor()
 
-        # Build a string like: 'RELIANCE','INFY','HDFCBANK','TCS','ICICIBANK'
-        # Used inside the SQL WHERE clause
-        symbols_str = ",".join([f"'{s}'" for s in self.symbols])
+        placeholders = ",".join(["%s"] * len(self.symbols))
 
-        # ── Fetch historical returns ────────────────────────
-        # We need daily returns for every stock, sorted by date
         query = f"""
-            SELECT symbol, date, close, returns
-            FROM market_ticks
-            WHERE symbol IN ({symbols_str})
-            ORDER BY symbol, date
+        SELECT symbol, date, close, returns
+        FROM market_ticks
+        WHERE symbol IN ({placeholders})
+        ORDER BY symbol, date
         """
-        rows = client.execute(query)
+
+        cur.execute(query, self.symbols)
+
+        rows = cur.fetchall()
+
+        cur.close()
+        conn.close()
 
         # rows is a list of tuples like:
         # [('RELIANCE', date(2024,5,17), 2847.5, 0.00521), ...]

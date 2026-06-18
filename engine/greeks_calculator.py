@@ -4,69 +4,115 @@
 import QuantLib as ql # type: ignore
 from datetime import date, datetime
 from engine.config import get_client
-
-# engine/greeks_calculator.py — add this at the top
+import math
 
 def get_market_data_batch(symbols: list) -> dict:
     """
-    Single query to get latest prices AND volatilities
-    for ALL symbols at once — replaces N queries with 1.
+    Fetch latest price and annualized volatility for all symbols.
+    PostgreSQL/Supabase version.
     """
-    client = get_client()
-    symbols_str = ",".join([f"'{s}'" for s in symbols])
 
-    rows = client.execute(f'''
-        SELECT
+    conn = get_client()
+    cur = conn.cursor()
+
+    placeholders = ",".join(["%s"] * len(symbols))
+
+    query = f"""
+    SELECT
+        m.symbol,
+        latest.close,
+        COALESCE(STDDEV_POP(m.returns) * SQRT(252), 0.20) AS annual_vol
+    FROM market_ticks m
+    JOIN (
+        SELECT DISTINCT ON (symbol)
             symbol,
-            argMax(close, date)            as latest_price,
-            stddevPop(returns) * sqrt(252) as annual_vol
+            close
         FROM market_ticks
-        WHERE symbol IN ({symbols_str})
-        GROUP BY symbol
-    ''')
+        ORDER BY symbol, date DESC
+    ) latest
+        ON m.symbol = latest.symbol
+    WHERE m.symbol IN ({placeholders})
+    GROUP BY m.symbol, latest.close
+    """
+
+    cur.execute(query, symbols)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
 
     return {
-        row[0]: {'price': float(row[1]), 'vol': float(row[2])}
+        row[0]: {
+            "price": float(row[1]),
+            "vol": float(row[2])
+        }
         for row in rows
     }
 
-# ── Helper: Get current stock price from database ───────────
+
 def get_current_price(symbol: str) -> float:
-    """Fetches the latest closing price for a symbol from ClickHouse."""
-    client = get_client()
-    result = client.execute(f"""
+    """
+    Latest close price from PostgreSQL.
+    """
+
+    conn = get_client()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
         SELECT close
         FROM market_ticks
-        WHERE symbol = '{symbol}'
+        WHERE symbol = %s
         ORDER BY date DESC
         LIMIT 1
-    """)
+        """,
+        (symbol,)
+    )
+
+    result = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
     if not result:
         raise ValueError(f"No price data found for {symbol}")
-    return float(result[0][0])
+
+    return float(result[0])
 
 
-# ── Helper: Get historical volatility from database ─────────
 def get_historical_volatility(symbol: str) -> float:
     """
-    Calculates annualized historical volatility for a symbol.
-    Uses the last 252 trading days (1 year).
-    Formula: daily_std_dev × √252
+    Annualized volatility using last 252 observations.
     """
-    client = get_client()
-    result = client.execute(f"""
-        SELECT stddevPop(returns)
+
+    conn = get_client()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT STDDEV_POP(returns)
         FROM (
             SELECT returns
             FROM market_ticks
-            WHERE symbol = '{symbol}'
+            WHERE symbol = %s
             ORDER BY date DESC
             LIMIT 252
-        )
-    """)
-    daily_vol  = float(result[0][0])
-    annual_vol = daily_vol * (252 ** 0.5)  # annualize
-    return annual_vol
+        ) t
+        """,
+        (symbol,)
+    )
+
+    result = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not result or result[0] is None:
+        return 0.20
+
+    daily_vol = float(result[0])
+
+    return daily_vol * math.sqrt(252)
 
 
 # ══════════════════════════════════════════════════════════════
